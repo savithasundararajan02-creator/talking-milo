@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talking Milo - Virtual Pet</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(135deg, #a8edf7 0%, #fed6e3 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        #game-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 380px;
+            position: relative;
+        }
+
+        h1 {
+            color: #444;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        /* Status Bars */
+        .status-container {
+            width: 100%;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .bar-bg {
+            width: 70%;
+            height: 12px;
+            background: #eee;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.3s ease;
+        }
+
+        #hunger-bar { background: #ff5252; }
+        #energy-bar { background: #ffb142; }
+        #happiness-bar { background: #2ed573; }
+
+        /* Speech Bubble */
+        #speech-bubble {
+            position: absolute;
+            top: 100px;
+            background: #ffffff;
+            border: 2px solid #333;
+            border-radius: 15px;
+            padding: 8px 14px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #speech-bubble.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        canvas {
+            background: #f1f2f6;
+            border-radius: 15px;
+            cursor: pointer;
+            border: 2px solid #dfe4ea;
+        }
+
+        /* Controls */
+        .action-btns {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px;
+            border: none;
+            border-radius: 10px;
+            background: #70a1ff;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.1s, background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1e90ff;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .talk-box {
+            display: flex;
+            width: 100%;
+            margin-top: 15px;
+            gap: 8px;
+        }
+
+        .talk-box input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #dfe4ea;
+            border-radius: 10px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        .talk-box button {
+            background: #2ed573;
+        }
+
+        .talk-box button:hover {
+            background: #26af5f;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-card">
+        <h1>Talking Milo 🐱</h1>
+
+        <div id="speech-bubble">Meow! Hello there!</div>
+
+        <!-- Needs Meters -->
+        <div class="status-container">
+            <div class="status-row">
+                <span>Hunger</span>
+                <div class="bar-bg"><div id="hunger-bar" class="bar-fill"></div></div>
+            </div>
+            <div class="status-row">
+                <span>Energy</span>
+                <div class="bar-bg"><div id="energy-bar" class="bar-fill"></div></div>
+            </div>
+            <div class="status-row">
+                <span>Happiness</span>
+                <div class="bar-bg"><div id="happiness-bar" class="bar-fill"></div></div>
+            </div>
+        </div>
+
+        <!-- Interactive Pet Canvas -->
+        <canvas id="petCanvas" width="300" height="280"></canvas>
+
+        <!-- Care Buttons -->
+        <div class="action-btns">
+            <button class="btn" onclick="feedPet()">🍕 Feed</button>
+            <button class="btn" onclick="playPet()">⚽ Play</button>
+            <button class="btn" onclick="sleepPet()">💤 Sleep</button>
+        </div>
+
+        <!-- Talk Input -->
+        <div class="talk-box">
+            <input type="text" id="talkInput" placeholder="Type something for Milo to say..." onkeydown="if(event.key==='Enter') speakInput()">
+            <button class="btn" onclick="speakInput()">Talk</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('petCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Pet State
+        const pet = {
+            x: 150,
+            y: 170,
+            hunger: 80,
+            energy: 90,
+            happiness: 85,
+            isSleeping: false,
+            isHappy: false,
+            isPurring: false,
+            eyeState: 'open', // open, closed, happy
+            mouthState: 'normal', // normal, open, smile
+            bounceOffset: 0
+        };
+
+        // UI Speech Bubble
+        const speechBubble = document.getElementById('speech-bubble');
+
+        function showSpeech(text, duration = 3000) {
+            speechBubble.innerText = text;
+            speechBubble.classList.add('active');
+            setTimeout(() => {
+                speechBubble.classList.remove('active');
+            }, duration);
+        }
+
+        // Text To Speech API
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Stop ongoing speech
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.pitch = 1.6; // High pitch like Talking Tom
+                utterance.rate = 1.1;  // Slightly faster
+
+                pet.mouthState = 'open';
+                utterance.onend = () => { pet.mouthState = 'normal'; };
+
+                window.speechSynthesis.speak(utterance);
+            }
+            showSpeech(text);
+        }
+
+        function speakInput() {
+            const input = document.getElementById('talkInput');
+            if (input.value.trim() !== "") {
+                if (pet.isSleeping) {
+                    showSpeech("Zzz... Milo is sleeping!");
+                    return;
+                }
+                speak(input.value);
+                pet.happiness = Math.min(100, pet.happiness + 5);
+                input.value = "";
+            }
+        }
+
+        // Pet Actions
+        function feedPet() {
+            if (pet.isSleeping) return;
+            if (pet.hunger >= 100) {
+                speak("I am full!");
+                return;
+            }
+            pet.hunger = Math.min(100, pet.hunger + 25);
+            speak("Yum! That was delicious!");
+        }
+
+        function playPet() {
+            if (pet.isSleeping) return;
+            if (pet.energy < 20) {
+                speak("I'm too tired to play!");
+                return;
+            }
+            pet.happiness = Math.min(100, pet.happiness + 20);
+            pet.energy = Math.max(0, pet.energy - 15);
+            pet.bounceOffset = -20;
+            speak("Yay! That was fun!");
+        }
+
+        function sleepPet() {
+            pet.isSleeping = !pet.isSleeping;
+            if (pet.isSleeping) {
+                speak("Goodnight! Zzz...");
+            } else {
+                speak("Good morning!");
+            }
+        }
+
+        // Canvas Interactions (Click Head/Belly)
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickY = e.clientY - rect.top;
+
+            if (pet.isSleeping) {
+                pet.isSleeping = false;
+                speak("You woke me up!");
+                return;
+            }
+
+            // Head click (Petting)
+            if (clickY < 150) {
+                pet.isPurring = true;
+                pet.eyeState = 'happy';
+                pet.happiness = Math.min(100, pet.happiness + 10);
+                speak("Purrrrr... I love pets!");
+                setTimeout(() => {
+                    pet.isPurring = false;
+                    pet.eyeState = 'open';
+                }, 2000);
+            } 
+            // Belly click (Tickling)
+            else {
+                pet.bounceOffset = -10;
+                speak("Hehehe! That tickles!");
+            }
+        });
+
+        // Drawing Functions
+        function drawCat() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerY = pet.y + pet.bounceOffset;
+
+            // Smooth bounce recovery
+            if (pet.bounceOffset < 0) pet.bounceOffset += 1;
+
+            // Ears
+            ctx.fillStyle = '#ff7f50';
+            ctx.beginPath();
+            ctx.moveTo(100, centerY - 60);
+            ctx.lineTo(80, centerY - 120);
+            ctx.lineTo(130, centerY - 80);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(200, centerY - 60);
+            ctx.lineTo(220, centerY - 120);
+            ctx.lineTo(170, centerY - 80);
+            ctx.fill();
+
+            // Inner Ears
+            ctx.fillStyle = '#ffb8b8';
+            ctx.beginPath();
+            ctx.moveTo(102, centerY - 65);
+            ctx.lineTo(88, centerY - 110);
+            ctx.lineTo(125, centerY - 80);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(198, centerY - 65);
+            ctx.lineTo(212, centerY - 110);
+            ctx.lineTo(175, centerY - 80);
+            ctx.fill();
+
+            // Body
+            ctx.fillStyle = '#ff7f50';
+            ctx.beginPath();
+            ctx.ellipse(150, centerY + 40, 60, 50, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // White Belly
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(150, centerY + 45, 40, 35, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Head
+            ctx.fillStyle = '#ff7f50';
+            ctx.beginPath();
+            ctx.arc(150, centerY - 30, 65, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cheeks
+            ctx.fillStyle = '#ffb8b8';
+            ctx.beginPath();
+            ctx.arc(115, centerY - 15, 12, 0, Math.PI * 2);
+            ctx.arc(185, centerY - 15, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyes
+            if (pet.isSleeping) {
+                // Sleeping Eyes (Lines)
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(120, centerY - 35, 12, 0.1 * Math.PI, 0.9 * Math.PI);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(180, centerY - 35, 12, 0.1 * Math.PI, 0.9 * Math.PI);
+                ctx.stroke();
+            } else if (pet.eyeState === 'happy') {
+                // Happy Arc Eyes
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(120, centerY - 30, 12, 1.1 * Math.PI, 1.9 * Math.PI);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(180, centerY - 30, 12, 1.1 * Math.PI, 1.9 * Math.PI);
+                ctx.stroke();
+            } else {
+                // Big Normal Eyes
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(120, centerY - 35, 16, 0, Math.PI * 2);
+                ctx.arc(180, centerY - 35, 16, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pupils
+                ctx.fillStyle = '#2ed573';
+                ctx.beginPath();
+                ctx.arc(120, centerY - 35, 10, 0, Math.PI * 2);
+                ctx.arc(180, centerY - 35, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(120, centerY - 35, 5, 0, Math.PI * 2);
+                ctx.arc(180, centerY - 35, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Nose
+            ctx.fillStyle = '#ff4757';
+            ctx.beginPath();
+            ctx.polygon = [
+                ctx.arc(150, centerY - 20, 6, 0, Math.PI * 2)
+            ];
+            ctx.fill();
+
+            // Mouth
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            if (pet.mouthState === 'open') {
+                ctx.fillStyle = '#ff4757';
+                ctx.beginPath();
+                ctx.arc(150, centerY - 10, 10, 0, Math.PI);
+                ctx.fill();
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.arc(143, centerY - 12, 6, 0, Math.PI);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(157, centerY - 12, 6, 0, Math.PI);
+                ctx.stroke();
+            }
+
+            // Whiskers
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#555';
+            // Left whiskers
+            ctx.beginPath(); ctx.moveTo(90, centerY - 20); ctx.lineTo(50, centerY - 25); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(90, centerY - 12); ctx.lineTo(50, centerY - 12); ctx.stroke();
+            // Right whiskers
+            ctx.beginPath(); ctx.moveTo(210, centerY - 20); ctx.lineTo(250, centerY - 25); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(210, centerY - 12); ctx.lineTo(250, centerY - 12); ctx.stroke();
+        }
+
+        // Update Needs Decay
+        setInterval(() => {
+            if (pet.isSleeping) {
+                pet.energy = Math.min(100, pet.energy + 5);
+                pet.hunger = Math.max(0, pet.hunger - 1);
+            } else {
+                pet.hunger = Math.max(0, pet.hunger - 2);
+                pet.energy = Math.max(0, pet.energy - 1);
+                pet.happiness = Math.max(0, pet.happiness - 1);
+            }
+
+            // Update Meters
+            document.getElementById('hunger-bar').style.width = pet.hunger + '%';
+            document.getElementById('energy-bar').style.width = pet.energy + '%';
+            document.getElementById('happiness-bar').style.width = pet.happiness + '%';
+        }, 2000);
+
+        // Render Loop
+        function loop() {
+            drawCat();
+            requestAnimationFrame(loop);
+        }
+
+        // Start
+        loop();
+        setTimeout(() => speak("Hi, I am Milo! Talk to me!"), 500);
+    </script>
+</body>
+</html>
